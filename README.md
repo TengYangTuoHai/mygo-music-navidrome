@@ -47,3 +47,7 @@ TengYangTuoHai/mygo-music-navidrome
 npm run check
 npm test
 ```
+
+## 许可证
+
+[GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）。
