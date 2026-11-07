@@ -1,7 +1,7 @@
 {
   "id": "navidrome",
   "name": "Navidrome",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "0.1.8",
   "main": "index.js",
   "playback": "stream",
@@ -13,10 +13,10 @@
   ],
   "navigation": [
     { "title": "发现音乐", "builtin": "home" },
-    { "title": "我喜欢的音乐", "builtin": "liked" },
-    { "title": "我喜欢的艺人", "page": "liked-artists", "icon": "star" },
-    { "title": "我喜欢的专辑", "builtin": "savedAlbums" },
     { "title": "专辑", "page": "albums", "icon": "album" },
-    { "title": "艺人", "page": "artists", "icon": "artist" }
+    { "title": "艺人", "page": "artists", "icon": "artist" },
+    { "title": "我喜欢的专辑", "builtin": "savedAlbums" },
+    { "title": "我喜欢的艺人", "page": "liked-artists", "icon": "star" },
+    { "title": "我喜欢的音乐", "builtin": "liked" }
   ]
 }
