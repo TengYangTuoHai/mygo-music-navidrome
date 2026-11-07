@@ -60,6 +60,27 @@ test("structured lyrics preserve timestamps and offset", async () => {
   assert.equal((await plugin.lyrics({ id: "1" })).lrc, "[00:01.400]hello");
 });
 
+test("browse lists starred and indexed artists", async () => {
+  reply = method => method === "getStarred2"
+    ? { status: "ok", starred2: { artist: [{ id: "a", name: "Artist", starred: "2026-01-01" }] } }
+    : { status: "ok", artists: { index: [{ name: "A", artist: [{ id: "a", name: "Artist" }] }, { name: "B", artist: [{ id: "b", name: "Band" }] }] } };
+  const liked = await plugin.browse({ page: "liked-artists" });
+  assert.equal(liked.sections[0].artists[0].following, true);
+  const all = await plugin.browse({ page: "artists" });
+  assert.deepEqual(all.sections[0].artists.map(artist => artist.id), ["a", "b"]);
+});
+
+test("album browsing links pages without dropping albums", async () => {
+  reply = (_method, params) => ({ status: "ok", albumList2: { album: Array.from({ length: params.get("offset") === "0" ? 51 : 1 }, (_, i) => ({ id: String(i + Number(params.get("offset"))), name: "Album" })) } });
+  const first = await plugin.browse({ page: "albums" });
+  assert.equal(first.sections[0].albums.length, 50);
+  assert.equal(first.sections[1].links[0].page, "albums:50");
+  const second = await plugin.browse({ page: first.sections[1].links[0].page });
+  assert.equal(second.sections[0].albums[0].id, "50");
+  assert.equal(second.sections[1].links[0].page, "albums");
+  assert.equal(second.sections[1].links.length, 1);
+});
+
 test("configuration and API errors are surfaced", async () => {
   settings.server = "ftp://example.com";
   await assert.rejects(plugin.search({ query: "x" }), { code: "setup" });

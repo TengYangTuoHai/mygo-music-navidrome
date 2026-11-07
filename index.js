@@ -72,6 +72,31 @@ export async function home() {
   ] };
 }
 
+export async function browse({ page }) {
+  if (page === "liked-artists") {
+    const artists = list((await starred()).artist).map(toArtist);
+    return { title: "我喜欢的艺人", sections: [{ artists, empty: "还没有喜欢的艺人" }] };
+  }
+  if (page === "artists") {
+    const data = await request("getArtists");
+    const artists = list(data.artists?.index).flatMap(group => list(group.artist)).map(toArtist);
+    return { title: "艺人", sections: [{ artists, empty: "音乐库中没有艺人" }] };
+  }
+  if (page === "albums" || /^albums:\d+$/.test(page)) {
+    const offset = page === "albums" ? 0 : Number(page.slice(7));
+    if (!Number.isSafeInteger(offset) || offset < 0) throw fail("unavailable", "无效的专辑页码");
+    const albums = list((await request("getAlbumList2", { type: "alphabeticalByName", size: PAGE_SIZE + 1, offset })).albumList2?.album);
+    const links = [];
+    if (offset > 0) links.push({ title: "上一页", page: offset <= PAGE_SIZE ? "albums" : `albums:${offset - PAGE_SIZE}` });
+    if (albums.length > PAGE_SIZE) links.push({ title: "下一页", page: `albums:${offset + PAGE_SIZE}` });
+    return { title: "专辑", subtitle: `第 ${Math.floor(offset / PAGE_SIZE) + 1} 页`, sections: [
+      { albums: albums.slice(0, PAGE_SIZE).map(toAlbum), empty: "没有更多专辑" },
+      ...(links.length ? [{ links }] : []),
+    ] };
+  }
+  throw fail("unavailable", "页面不存在");
+}
+
 export async function search({ query, kind = "tracks", offset = 0 }) {
   if (kind === "playlists") {
     const matches = (await playlists()).filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
