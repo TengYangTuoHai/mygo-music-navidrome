@@ -72,12 +72,60 @@ export async function home() {
   ] };
 }
 
+let nativeSession = null;
+
+// The native API is the Web UI's internal API and can differ between releases.
+// A missing route falls back to the public Subsonic API; authentication and
+// other server errors are reported instead of being silently hidden.
+async function nativeArtists() {
+  const { server, username, password } = config();
+  const sessionKey = `${server}\n${username}\n${password}`;
+  async function login() {
+    const response = await fetch(`${server}/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (response.status === 404 || response.status === 405) return null;
+    if (!response.ok) throw fail(response.status === 401 || response.status === 403 ? "setup" : "unavailable", `Navidrome 登录失败（HTTP ${response.status}）`);
+    const data = await response.json();
+    if (!data?.token) throw fail("unavailable", "Navidrome 登录响应缺少令牌");
+    nativeSession = { key: sessionKey, token: data.token };
+    return nativeSession;
+  }
+  let session = nativeSession?.key === sessionKey ? nativeSession : await login();
+  if (!session) return null;
+  let refreshed = false;
+  const artists = [];
+  for (let offset = 0; ; offset += 500) {
+    const url = new URL(`${server}/api/artist`);
+    url.searchParams.set("_start", String(offset));
+    url.searchParams.set("_end", String(offset + 500));
+    url.searchParams.set("_sort", "name");
+    url.searchParams.set("_order", "ASC");
+    let response = await fetch(url.toString(), { headers: { "X-ND-Authorization": `Bearer ${session.token}` } });
+    if (response.status === 401 && !refreshed) {
+      session = await login();
+      if (!session) return null;
+      refreshed = true;
+      response = await fetch(url.toString(), { headers: { "X-ND-Authorization": `Bearer ${session.token}` } });
+    }
+    if (response.status === 404 || response.status === 405) return null;
+    if (!response.ok) throw new Error(`Navidrome 艺人列表请求失败（HTTP ${response.status}）`);
+    const page = await response.json();
+    if (!Array.isArray(page)) throw fail("unavailable", "Navidrome 艺人列表响应无效");
+    artists.push(...page.map(a => toArtist({ ...a, coverArt: a.imageAbsent ? "" : `ar-${a.id}` })));
+    if (page.length < 500) return artists;
+  }
+}
+
 export async function browse({ page }) {
   if (page === "liked-artists") {
     const artists = list((await starred()).artist).map(toArtist);
     return { title: "我喜欢的艺人", sections: [{ artists, empty: "还没有喜欢的艺人" }] };
   }
   if (page === "artists") {
+    const native = await nativeArtists();
+    if (native) return { title: "艺人", sections: [{ artists: native, empty: "音乐库中没有艺人" }] };
     const data = await request("getArtists");
     const artists = list(data.artists?.index).flatMap(group => list(group.artist)).map(toArtist);
     return { title: "艺人", sections: [{ artists, empty: "音乐库中没有艺人" }] };
@@ -182,11 +230,17 @@ export async function lyrics({ id }) {
   return { lrc };
 }
 
-export async function stream({ id }) {
+export async function stream({ id, quality = "high" }) {
   const song = (await request("getSong", { id })).song;
   if (!song) throw fail("unavailable", "歌曲不存在或无权访问");
   const suffix = (song.suffix || "").toLowerCase();
   const types = { mp3: "mp3", flac: "flac", ogg: "ogg", oga: "ogg", wav: "wav", m4a: "m4a", mp4: "m4a", aac: "aac" };
-  const type = types[suffix] || "mp3";
-  return { url: endpoint("stream", { id, ...(types[suffix] ? { format: "raw" } : { format: "mp3" }) }), type };
+  const lossless = quality === "lossless";
+  if (lossless && types[suffix]) {
+    return { url: endpoint("stream", { id, format: "raw" }), type: types[suffix] };
+  }
+  // Request a known output format so the player's decoder matches the stream.
+  // Navidrome may serve an already-compatible MP3 directly if it is below the limit.
+  const maxBitRate = quality === "standard" ? 128 : 320;
+  return { url: endpoint("stream", { id, format: "mp3", maxBitRate }), type: "mp3" };
 }
