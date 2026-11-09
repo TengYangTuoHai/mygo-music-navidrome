@@ -10,7 +10,8 @@
     { "key": "server", "label": "Server URL", "help": "For example https://music.example.com; subpaths are supported" },
     { "key": "username", "label": "Username" },
     { "key": "password", "label": "Password", "help": "Your Navidrome password; use HTTPS" },
-    { "key": "betterLyrics", "label": "External lyrics", "help": "Uses Better Lyrics when the server has no lyrics; enter off to disable" }
+    { "key": "betterLyrics", "label": "External lyrics", "help": "Uses Better Lyrics when the server has no lyrics; enter off to disable" },
+    { "key": "lyricsSeparator", "label": "Lyrics translation separator", "help": "Split each lyric line into original and translation; leave empty to disable" }
   ],
   "navigation": [
     { "title": "Discover", "builtin": "home" },

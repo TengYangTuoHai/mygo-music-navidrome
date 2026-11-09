@@ -424,11 +424,55 @@ function parseTtml(ttml) {
   }
   return lines;
 }
+function splitLyricText(text, separator) {
+  const at = text.indexOf(separator);
+  if (at < 0) return null;
+  const original = text.slice(0, at).trim();
+  const translation = text.slice(at + separator.length).trim();
+  return original && translation ? { original, translation } : null;
+}
+
+function withLyricTranslations(result) {
+  const separator = host.setting("lyricsSeparator") || "";
+  if (!separator) return result;
+  if (result.lines?.length) {
+    return { ...result, lines: result.lines.map(line => {
+      const split = splitLyricText(line.text || "", separator);
+      if (!split) return line;
+      const converted = { ...line, text: split.original, translation: line.translation || split.translation };
+      if (line.words?.length) {
+        if (line.words.map(word => word.text).join("").startsWith(split.original)) {
+          let remaining = split.original.length;
+          converted.words = line.words.flatMap(word => {
+            const text = word.text.slice(0, remaining);
+            remaining -= text.length;
+            return text ? [{ ...word, text }] : [];
+          });
+        } else {
+          delete converted.words;
+        }
+      }
+      return converted;
+    }) };
+  }
+  if (!result.lrc) return result;
+  const translations = [];
+  const lrc = result.lrc.split("\n").map(line => {
+    const match = line.match(/^((?:\s*\[\d+:\d+(?:[.:]\d+)?\])+)(.*)$/);
+    if (!match) return line;
+    const split = splitLyricText(match[2], separator);
+    if (!split) return line;
+    translations.push(match[1] + split.translation);
+    return match[1] + split.original;
+  }).join("\n");
+  return { ...result, lrc, ...(result.translation || !translations.length ? {} : { translation: translations.join("\n") }) };
+}
+
 export async function lyrics({ id }) {
   try {
     const data = await request("getLyricsBySongId", { id, enhanced: true });
     const result = structuredLyrics(list(data.lyricsList?.structuredLyrics));
-    if (result) return result;
+    if (result) return withLyricTranslations(result);
   } catch (error) {
     if (error.code === "setup") throw error;
   }
@@ -436,7 +480,7 @@ export async function lyrics({ id }) {
   if (!song) return { lrc: "" };
   try {
     const legacy = (await request("getLyrics", { artist: song.artist || "", title: song.title || "" })).lyrics?.value;
-    if (legacy) return { lrc: legacy };
+    if (legacy) return withLyricTranslations({ lrc: legacy });
   } catch (error) {
     if (error.code === "setup") throw error;
   }
@@ -450,7 +494,7 @@ export async function lyrics({ id }) {
     const response = await fetch(url.toString());
     if (response.ok) {
       const lines = parseTtml((await response.json()).ttml || "");
-      if (lines.length) return { lines };
+      if (lines.length) return withLyricTranslations({ lines });
     }
   } catch { /* No external lyrics; playback is unaffected. */ }
   return { lrc: "" };

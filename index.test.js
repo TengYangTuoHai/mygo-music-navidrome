@@ -24,6 +24,7 @@ beforeEach(() => {
   calls.length = 0;
   storage.clear();
   settings.server = "https://music.example.com/navidrome/";
+  delete settings.lyricsSeparator;
   reply = () => ({ status: "ok" });
   nativeReply = () => ({ ok: false, status: 404 });
   externalReply = () => ({ ok: false, status: 404 });
@@ -162,6 +163,52 @@ test("structured lyrics include translations and timed words", async () => {
   const result = await plugin.lyrics({ id: "1" });
   assert.equal(result.lines[0].translation, "你好");
   assert.deepEqual(result.lines[0].words[0], { start: 1100, end: 2100, text: "Hi" });
+});
+
+test("configured separator splits synced lyrics while preserving timestamps", async () => {
+  reply = () => ({ status: "ok", lyricsList: { structuredLyrics: [{ synced: true, line: [
+    { start: 1000, value: "Hello - 你好 - 世界" },
+    { start: 2500, value: "Untranslated" },
+  ] }] } });
+  assert.equal((await plugin.lyrics({ id: "1" })).lrc, "[00:01.000]Hello - 你好 - 世界\n[00:02.500]Untranslated");
+  settings.lyricsSeparator = "-";
+  assert.deepEqual(await plugin.lyrics({ id: "1" }), {
+    lrc: "[00:01.000]Hello\n[00:02.500]Untranslated",
+    translation: "[00:01.000]你好 - 世界",
+  });
+});
+
+test("separator splits timed lyrics without singing the translation", async () => {
+  settings.lyricsSeparator = " / ";
+  reply = () => ({ status: "ok", lyricsList: { structuredLyrics: [{ kind: "main", cueLine: [
+    { start: 1000, end: 2000, value: "Hello / 你好", cue: [{ start: 1000, end: 2000, value: "Hello / 你好" }] },
+  ] }] } });
+  const { lines } = await plugin.lyrics({ id: "1" });
+  assert.equal(lines[0].text, "Hello");
+  assert.equal(lines[0].translation, "你好");
+  assert.equal(lines[0].words.map(word => word.text).join(""), "Hello");
+});
+
+test("separator keeps a separately supplied translation", async () => {
+  settings.lyricsSeparator = "-";
+  reply = () => ({ status: "ok", lyricsList: { structuredLyrics: [
+    { kind: "main", synced: true, line: [{ start: 1000, value: "Hello - 你好" }] },
+    { kind: "translation", synced: true, line: [{ start: 1000, value: "您好" }] },
+  ] } });
+  assert.deepEqual(await plugin.lyrics({ id: "1" }), { lrc: "[00:01.000]Hello", translation: "[00:01.000]您好" });
+});
+
+test("separator also splits legacy LRC and external timed lyrics", async () => {
+  settings.lyricsSeparator = "-";
+  reply = method => method === "getSong" ? { status: "ok", song: { id: "1", title: "Song" } }
+    : method === "getLyrics" ? { status: "ok", lyrics: { value: "[00:01.00]Hello - 你好" } } : { status: "ok" };
+  assert.deepEqual(await plugin.lyrics({ id: "1" }), { lrc: "[00:01.00]Hello", translation: "[00:01.00]你好" });
+  reply = method => method === "getSong" ? { status: "ok", song: { id: "1", title: "Song" } } : { status: "ok" };
+  externalReply = () => ({ ok: true, json: async () => ({ ttml: '<p begin="00:01.000"><span begin="00:01.000" end="00:02.000">Hello - 你好</span></p>' }) });
+  const { lines } = await plugin.lyrics({ id: "1" });
+  assert.equal(lines[0].text, "Hello");
+  assert.equal(lines[0].translation, "你好");
+  assert.equal(lines[0].words.map(word => word.text).join(""), "Hello");
 });
 
 test("external lyrics are used when the server has no lyrics and can be disabled", async () => {
