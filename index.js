@@ -89,8 +89,7 @@ export function setSetting({ key }) {
 }
 
 export async function home() {
-  const [random, newest, recent, frequent, favorites, myPlaylists] = await Promise.all([
-    request("getRandomSongs", { size: 24 }),
+  const [newest, recent, frequent, favorites, myPlaylists] = await Promise.all([
     request("getAlbumList2", { type: "newest", size: 24 }),
     request("getAlbumList2", { type: "recent", size: 24 }),
     request("getAlbumList2", { type: "frequent", size: 24 }),
@@ -100,7 +99,6 @@ export async function home() {
   const recommendations = await tracksFromAlbums([...list(favorites.albumList2?.album), ...list(frequent.albumList2?.album)]);
   return { title: tr("发现音乐", "Discover"), sections: [
     ...(recommendations.length ? [{ title: tr("为你推荐", "For you"), tracks: recommendations }] : []),
-    { title: tr("随机歌曲", "Random songs"), tracks: list(random.randomSongs?.song).map(toTrack) },
     { title: tr("最近添加", "Recently added"), albums: list(newest.albumList2?.album).map(toAlbum) },
     { title: tr("最近播放", "Recently played"), albums: list(recent.albumList2?.album).map(toAlbum) },
     { title: tr("最多播放", "Most played"), albums: list(frequent.albumList2?.album).map(toAlbum) },
